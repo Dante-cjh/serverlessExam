@@ -34,6 +34,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
 
         const awardBody = parameters?.awardBody;
 
+        const minReward = event.queryStringParameters?.min;
+
         if (!movieId) {
             return {
                 statusCode: 404,
@@ -55,10 +57,17 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
         }
 
         const keyConditionExpression: string = "movieId = :movieId AND awardBody = :awardBody";
-        const expressionAttributeValues: any = {
+        let expressionAttributeValues: any = {
             ":movieId": movieId,
             ":awardBody": awardBody
         };
+
+        let filterExpression = '';
+
+        if (minReward) {
+            filterExpression += 'numAwards >= :minReward';
+            expressionAttributeValues[":minReward"] = parseInt(minReward);
+        }
 
         const queryCommandInput: any = {
             TableName: process.env.TABLE_NAME, // 确保环境变量名称正确
@@ -66,8 +75,23 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
             ExpressionAttributeValues: expressionAttributeValues,
         };
 
+        if (filterExpression) {
+            queryCommandInput["FilterExpression"] = filterExpression;
+        }
+
         const queryOutput = await ddbDocClient.send(new QueryCommand(queryCommandInput));
         console.log("QueryCommand response: ", queryOutput);
+
+        // @ts-ignore
+        if (queryOutput.Items.length === 0){
+            return {
+                statusCode: 400,
+                headers: {
+                    "content-type": "application/json",
+                },
+                body: JSON.stringify({ Message: "Request failed" }),
+            };
+        }
 
         // Return Response
         return {
